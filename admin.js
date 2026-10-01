@@ -1,27 +1,6 @@
-const adminAssetBase = new URL(".", document.currentScript.src);
-
-const state = {
-  config: null,
-  applying: false,
-  restart: null,
-  fields: new Map(),
-  modelOptions: [],
-  modelComboboxes: new Set(),
-  authPollers: new Map(),
-  authStatuses: new Map(),
-  providerChecks: new Map(),
-  providerId: null,
-  customProvider: null,
-  modelLabels: new Map(),
-  localStatusRequest: null,
-  startup: null,
-  startupRequest: null,
-  startupTimer: null,
-  startupAgain: false,
-  codeCatalogRetry: false,
-  modelOptionsRequest: 0,
-  activeView: viewFromLocation(),
-};
+const adminAssetBase = (typeof document !== "undefined" && document.currentScript && document.currentScript.src)
+  ? new URL(".", document.currentScript.src)
+  : new URL(".", window.location.href);
 
 const MASKED_SECRET = "********";
 const NULL_VALUE = "__FCC_NULL__";
@@ -86,6 +65,29 @@ function viewFromLocation() {
   }
   return "chat";
 }
+
+const state = {
+  config: null,
+  applying: false,
+  restart: null,
+  fields: new Map(),
+  modelOptions: [],
+  modelComboboxes: new Set(),
+  authPollers: new Map(),
+  authStatuses: new Map(),
+  providerChecks: new Map(),
+  providerId: null,
+  customProvider: null,
+  modelLabels: new Map(),
+  localStatusRequest: null,
+  startup: null,
+  startupRequest: null,
+  startupTimer: null,
+  startupAgain: false,
+  codeCatalogRetry: false,
+  modelOptionsRequest: 0,
+  activeView: viewFromLocation(),
+};
 
 const byId = (id) => document.getElementById(id);
 
@@ -284,19 +286,33 @@ async function load({ providersOnly = false } = {}) {
 
 function renderNav() {
   const nav = byId("sectionNav");
+  if (!nav) return;
+  const existingButtons = nav.querySelectorAll("button[data-view]");
+  if (existingButtons.length > 0) {
+    existingButtons.forEach((btn) => {
+      const viewId = btn.dataset.view;
+      btn.onclick = (e) => {
+        e.preventDefault();
+        navigateToView(viewId);
+      };
+    });
+    setActiveView(state.activeView, { scroll: false });
+    return;
+  }
   nav.innerHTML = "";
   VIEW_GROUPS.forEach((view, index) => {
     const button = document.createElement("button");
     button.type = "button";
-    button.className = `nav-link${index === 0 ? " active" : ""}`;
+    button.className = `nav-link${view.id === state.activeView ? " active" : ""}`;
     button.dataset.view = view.id;
     button.textContent = view.label;
-    if (index === 0) {
+    if (view.id === state.activeView) {
       button.setAttribute("aria-current", "page");
     }
-    button.addEventListener("click", () => {
+    button.onclick = (e) => {
+      e.preventDefault();
       navigateToView(view.id);
-    });
+    };
     nav.appendChild(button);
   });
   setActiveView(state.activeView, { scroll: false });
@@ -336,13 +352,24 @@ function setActiveView(viewId, { scroll = false } = {}) {
   if (scroll) {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
-  if (activeView.id === "chat" && window.FccChat) {
-    window.FccChat.initialize();
+  if (activeView.id === "chat" && window.FccChat?.initialize) {
+    try {
+      window.FccChat.initialize();
+    } catch (e) {
+      console.warn("FccChat init caught:", e);
+    }
   }
-  if (activeView.id === "code") window.CodeSessions.activate(window.location.pathname);
-  else window.CodeSessions.deactivate();
-  if (activeView.id === "studio" && window.FccStudio) {
-    window.FccStudio.initialize();
+  if (activeView.id === "code" && window.CodeSessions?.activate) {
+    window.CodeSessions.activate(window.location.pathname);
+  } else if (window.CodeSessions?.deactivate) {
+    window.CodeSessions.deactivate();
+  }
+  if (activeView.id === "studio" && window.FccStudio?.initialize) {
+    try {
+      window.FccStudio.initialize();
+    } catch (e) {
+      console.warn("FccStudio init caught:", e);
+    }
   }
   if (activeView.id === "integrations") {
     refreshClaudeIntegration();

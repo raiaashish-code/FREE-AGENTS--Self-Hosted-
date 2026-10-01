@@ -924,4 +924,18 @@
     initialize: initializeStudio,
     openGithub: openGithubModal,
   };
+
+  function autoBootStudio() {
+    const root = byId("studioRoot");
+    const isStudio = window.location.hash === "#studio" || (window.location.pathname && window.location.pathname.includes("studio"));
+    if (root && isStudio && (!root.children || root.children.length === 0)) {
+      initializeStudio();
+    }
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", autoBootStudio);
+  } else {
+    setTimeout(autoBootStudio, 20);
+  }
 })();

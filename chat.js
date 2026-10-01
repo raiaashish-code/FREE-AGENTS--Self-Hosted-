@@ -1248,4 +1248,18 @@
   window.FccChat = {
     initialize: initializeChat,
   };
+
+  // Self-boot if chatRoot is in the DOM
+  function autoBoot() {
+    const root = byId("chatRoot");
+    if (root && (!root.children || root.children.length === 0)) {
+      initializeChat();
+    }
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", autoBoot);
+  } else {
+    setTimeout(autoBoot, 10);
+  }
 })();
