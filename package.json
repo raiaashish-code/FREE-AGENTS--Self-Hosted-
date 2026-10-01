@@ -1,0 +1,25 @@
+{
+  "name": "free-claude-code",
+  "version": "0.3.1",
+  "description": "Local proxy and admin console connecting coding agents to OpenAI-compatible AI providers",
+  "type": "module",
+  "main": "server.ts",
+  "scripts": {
+    "dev": "tsx server.ts",
+    "build": "tsc",
+    "lint": "tsc --noEmit",
+    "start": "tsx server.ts"
+  },
+  "dependencies": {
+    "@google/genai": "latest",
+    "cors": "^2.8.5",
+    "express": "^4.21.2"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
