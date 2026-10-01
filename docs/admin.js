@@ -78,7 +78,13 @@ const VIEW_GROUPS = [
 ];
 
 function viewFromLocation() {
-  return window.location.pathname.split("/")[2] || "chat";
+  const hash = (window.location.hash || "").replace(/^#/, "");
+  if (hash && VIEW_GROUPS.some((v) => v.id === hash)) return hash;
+  const parts = window.location.pathname.split("/").filter(Boolean);
+  for (const p of parts) {
+    if (VIEW_GROUPS.some((v) => v.id === p)) return p;
+  }
+  return "chat";
 }
 
 const byId = (id) => document.getElementById(id);
@@ -225,7 +231,26 @@ async function load({ providersOnly = false } = {}) {
   state.startupRequest?.controller.abort();
   state.startupRequest = null;
   showMessage("Loading admin config");
-  const config = await api("/admin/api/config");
+
+  let config;
+  try {
+    config = await api("/admin/api/config");
+  } catch (err) {
+    console.warn("Could not connect to backend server. Running in static preview mode.", err);
+    config = {
+      paths: { managed: "GitHub Pages (Static Preview Mode)" },
+      custom_providers: [],
+      provider_status: [
+        { id: "nvidia_nim", name: "NVIDIA NIM", status: "not_configured", settings_keys: ["NVIDIA_NIM_API_KEY"], missing_configuration_keys: ["NVIDIA_NIM_API_KEY"] },
+        { id: "gemini", name: "Google Gemini", status: "not_configured", settings_keys: ["GEMINI_API_KEY"], missing_configuration_keys: ["GEMINI_API_KEY"] },
+      ],
+      fields: [
+        { key: "MODEL", value: "nvidia_nim/nvidia/nemotron-3-super-120b-a12b", options: ["nvidia_nim/nvidia/nemotron-3-super-120b-a12b", "gemini-3.5-flash"] },
+      ],
+      sections: [],
+    };
+  }
+
   config.custom_providers ||= [];
   config.provider_status.push(...config.custom_providers.map((provider) => ({ ...provider, kind: "custom", status: "configured", settings_keys: [], missing_configuration_keys: [] })));
   state.config = config;
@@ -241,13 +266,17 @@ async function load({ providersOnly = false } = {}) {
   renderProviders(config.provider_status);
   if (!providersOnly) renderSections(config.sections, config.fields);
   byId("configPath").textContent = config.paths.managed;
-  void refreshLocalStatus(config);
-  void refreshStartup();
-  await Promise.all([
-    refreshConnectedAccounts(),
-    hydrateModelOptions(),
-    providersOnly ? window.CodeSessions.refresh() : window.CodeSessions.initialize(api),
-  ]);
+  try {
+    void refreshLocalStatus(config);
+    void refreshStartup();
+    await Promise.all([
+      refreshConnectedAccounts().catch(() => {}),
+      hydrateModelOptions().catch(() => {}),
+      (providersOnly ? window.CodeSessions?.refresh() : window.CodeSessions?.initialize(api))?.catch?.(() => {}),
+    ]);
+  } catch (err) {
+    console.warn("Secondary config load optional:", err);
+  }
   if (state.config !== config) return;
   updateDirtyState();
   showMessage("");
@@ -325,9 +354,14 @@ function setActiveView(viewId, { scroll = false } = {}) {
 }
 
 function navigateToView(viewId) {
-  const target = viewId === "chat" ? "/admin" : `/admin/${viewId}`;
-  if (window.location.pathname + window.location.search !== target) {
-    window.history.pushState({}, "", target);
+  const isStaticOrPages = window.location.hostname.endsWith("github.io") || !window.location.pathname.startsWith("/admin");
+  if (isStaticOrPages) {
+    window.location.hash = viewId;
+  } else {
+    const target = viewId === "chat" ? "/admin" : `/admin/${viewId}`;
+    if (window.location.pathname + window.location.search !== target) {
+      window.history.pushState({}, "", target);
+    }
   }
   setActiveView(viewId, { scroll: true });
 }
@@ -2239,6 +2273,20 @@ new ResizeObserver(([entry]) => {
   );
 }).observe(document.querySelector(".action-bar"), { box: "border-box" });
 
+// Populate navigation immediately so UI is always interactive without waiting for network
+try {
+  renderNav();
+} catch (e) {
+  console.warn("Initial renderNav caught:", e);
+}
+
+window.addEventListener("hashchange", () => {
+  const nextView = viewFromLocation();
+  if (nextView !== state.activeView) {
+    setActiveView(nextView);
+  }
+});
+
 load().then(showRestartNotice).catch((error) => {
-  showMessage(error.message, "error");
+  console.warn("Static load notice:", error.message);
 });

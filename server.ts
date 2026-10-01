@@ -11,7 +11,7 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = parseInt(process.env.PORT || "3000", 10);
 const HOST = "0.0.0.0";
-const VERSION = "0.3.1";
+const VERSION = "0.3.2";
 
 app.use(cors());
 app.use(express.json({ limit: "50mb" }));
@@ -363,9 +363,15 @@ app.get("/admin/assets/:version/:filename(*)", (req: Request, res: Response) => 
   return res.status(404).send("Admin asset not found");
 });
 
+// Serve static assets directly from public
+app.use(express.static(path.join(__dirname, "public")));
+app.use("/admin", express.static(path.join(__dirname, "public")));
+
 // Serve uploaded attachments and screenshots
 app.get("/attachments/:filename", (req: Request, res: Response) => {
-  const safeName = path.basename(req.params.filename);
+  const rawParam = req.params.filename;
+  const filename = Array.isArray(rawParam) ? rawParam[0] : String(rawParam || "");
+  const safeName = path.basename(filename);
   const filePath = path.join("/workspace", "attachments", safeName);
   if (fs.existsSync(filePath)) {
     return res.sendFile(filePath);
