@@ -45,19 +45,39 @@
   }
 
   async function api(path, options = {}) {
-    const res = await fetch(path, {
+    const backendUrl = (localStorage.getItem("fcc_backend_url") || "").trim();
+    let fullUrl = path;
+    if (backendUrl && path.startsWith("/api/")) {
+      fullUrl = backendUrl.replace(/\/+$/, "") + path;
+    }
+    const res = await fetch(fullUrl, {
       headers: { "Content-Type": "application/json", ...(options.headers || {}) },
       ...options,
     });
-    if (!res.ok) {
-      let msg = `HTTP ${res.status}`;
-      try {
-        const d = await res.json();
-        if (d.error) msg = d.error;
-      } catch {}
-      throw new Error(msg);
+    const text = await res.text();
+    let data = null;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      // response was not JSON (e.g. static 404 or 405 error page)
     }
-    return res.json();
+    if (!res.ok) {
+      let msg = data?.error || data?.detail;
+      if (!msg) {
+        if (res.status === 405) {
+          msg = "HTTP 405: Static host does not support POST requests without a backend server.";
+        } else if (res.status === 404) {
+          msg = `HTTP 404: Endpoint ${path} not found.`;
+        } else {
+          msg = `HTTP ${res.status}`;
+        }
+      }
+      const err = new Error(msg);
+      err.status = res.status;
+      err.data = data;
+      throw err;
+    }
+    return data !== null ? data : { text };
   }
 
   // ==========================================
@@ -240,6 +260,9 @@
           </div>
 
           <div class="chat-nav-actions">
+            <button id="openApiKeysBtn" class="secondary-button" type="button" style="padding: 4px 10px; font-size: 12px; display: inline-flex; align-items: center; gap: 5px;" title="Configure API Keys (NVIDIA NIM, Gemini, OpenAI) and Server URL">
+              <span id="apiKeysDot">🔑</span> <span id="apiKeysBtnLabel">API Keys & Server</span>
+            </button>
             <div class="mode-pill-toggle">
               <button id="modeClaudeCodeBtn" class="mode-pill-btn active" type="button">💻 Claude Code Agent</button>
               <button id="modeChatBtn" class="mode-pill-btn" type="button">💬 Conversational</button>
@@ -714,6 +737,75 @@
       }
     });
 
+    // Client API Keys & Server Config Modal Events
+    const keysDialog = byId("clientKeysDialog");
+    function openClientKeysModal() {
+      if (!keysDialog) return;
+      const nvInput = byId("inputNvidiaKey");
+      const gemInput = byId("inputGeminiKey");
+      const oaiInput = byId("inputOpenaiKey");
+      const urlInput = byId("inputBackendUrl");
+      const status = byId("clientKeysStatus");
+      if (nvInput) nvInput.value = localStorage.getItem("fcc_nvidia_key") || "";
+      if (gemInput) gemInput.value = localStorage.getItem("fcc_gemini_key") || "";
+      if (oaiInput) oaiInput.value = localStorage.getItem("fcc_openai_key") || "";
+      if (urlInput) urlInput.value = localStorage.getItem("fcc_backend_url") || "";
+      if (status) status.hidden = true;
+      keysDialog.showModal();
+    }
+
+    byId("openApiKeysBtn")?.addEventListener("click", openClientKeysModal);
+    byId("closeClientKeysDialog")?.addEventListener("click", () => keysDialog?.close());
+    byId("cancelClientKeysBtn")?.addEventListener("click", () => keysDialog?.close());
+    byId("clearClientKeysBtn")?.addEventListener("click", () => {
+      localStorage.removeItem("fcc_nvidia_key");
+      localStorage.removeItem("fcc_gemini_key");
+      localStorage.removeItem("fcc_openai_key");
+      localStorage.removeItem("fcc_backend_url");
+      if (byId("inputNvidiaKey")) byId("inputNvidiaKey").value = "";
+      if (byId("inputGeminiKey")) byId("inputGeminiKey").value = "";
+      if (byId("inputOpenaiKey")) byId("inputOpenaiKey").value = "";
+      if (byId("inputBackendUrl")) byId("inputBackendUrl").value = "";
+      const status = byId("clientKeysStatus");
+      if (status) {
+        status.hidden = false;
+        status.style.color = "#ef4444";
+        status.textContent = "Cleared all local keys.";
+      }
+      updateApiKeysBtnUI();
+    });
+    byId("saveClientKeysBtn")?.addEventListener("click", () => {
+      const nv = (byId("inputNvidiaKey")?.value || "").trim();
+      const gem = (byId("inputGeminiKey")?.value || "").trim();
+      const oai = (byId("inputOpenaiKey")?.value || "").trim();
+      const url = (byId("inputBackendUrl")?.value || "").trim();
+      if (nv) localStorage.setItem("fcc_nvidia_key", nv); else localStorage.removeItem("fcc_nvidia_key");
+      if (gem) localStorage.setItem("fcc_gemini_key", gem); else localStorage.removeItem("fcc_gemini_key");
+      if (oai) localStorage.setItem("fcc_openai_key", oai); else localStorage.removeItem("fcc_openai_key");
+      if (url) localStorage.setItem("fcc_backend_url", url); else localStorage.removeItem("fcc_backend_url");
+
+      const status = byId("clientKeysStatus");
+      if (status) {
+        status.hidden = false;
+        status.style.color = "#22c55e";
+        status.textContent = "✓ Settings saved successfully!";
+      }
+      updateApiKeysBtnUI();
+      setTimeout(() => keysDialog?.close(), 500);
+    });
+
+    // Listen for clicks on links in messages requesting API key setup
+    byId("chatMessagesScroll")?.addEventListener("click", (e) => {
+      const target = e.target.closest("a, button");
+      if (!target) return;
+      if (target.getAttribute("href") === "#open-keys-modal" || target.dataset.action === "open-keys") {
+        e.preventDefault();
+        openClientKeysModal();
+      }
+    });
+
+    updateApiKeysBtnUI();
+
     // Image preview dialog
     const previewDialog = byId("imagePreviewDialog");
     byId("closeImagePreviewDialog")?.addEventListener("click", () => previewDialog?.close());
@@ -873,6 +965,167 @@
     });
   }
 
+  function updateApiKeysBtnUI() {
+    const dot = byId("apiKeysDot");
+    const label = byId("apiKeysBtnLabel");
+    const nvidiaKey = (localStorage.getItem("fcc_nvidia_key") || "").trim();
+    const geminiKey = (localStorage.getItem("fcc_gemini_key") || "").trim();
+    const openaiKey = (localStorage.getItem("fcc_openai_key") || "").trim();
+    const backendUrl = (localStorage.getItem("fcc_backend_url") || "").trim();
+    const hasKey = Boolean(nvidiaKey || geminiKey || openaiKey || backendUrl);
+    if (dot) dot.textContent = hasKey ? "🟢" : "🔑";
+    if (label) {
+      if (backendUrl) label.textContent = "Server: Connected";
+      else if (nvidiaKey) label.textContent = "NVIDIA NIM Active";
+      else if (geminiKey) label.textContent = "Gemini Active";
+      else if (openaiKey) label.textContent = "OpenAI Active";
+      else label.textContent = "API Keys & Server";
+    }
+  }
+
+  // ==========================================
+  // Direct Client-Side Browser AI (Zero-Server / GitHub Pages Mode)
+  // ==========================================
+  async function executeDirectAI({ prompt, messages, attachments, assistantIndex }) {
+    const nvidiaKey = (localStorage.getItem("fcc_nvidia_key") || "").trim();
+    const geminiKey = (localStorage.getItem("fcc_gemini_key") || "").trim();
+    const openaiKey = (localStorage.getItem("fcc_openai_key") || "").trim();
+
+    if (!nvidiaKey && !geminiKey && !openaiKey) {
+      state.messages[assistantIndex] = {
+        role: "assistant",
+        content: `👋 **Welcome to Free Claude Code (Static GitHub Pages Mode)**\n\nGitHub Pages is a static host without a Node.js backend. You can run AI models **directly inside your browser** with your own free API key:\n\n• **NVIDIA NIM** (Recommended — free tier provides Nemotron 3 120B, Llama 3.3 70B, DeepSeek R1):\n  👉 [Get Free NVIDIA Key](https://build.nvidia.com)\n• **Google Gemini** (Gemini 2.5 Flash with full screenshot / multimodal vision):\n  👉 [Get Free Gemini Key](https://aistudio.google.com/apikey)\n\n<p style="margin-top:12px;"><button type="button" class="primary-button" data-action="open-keys" style="padding:6px 16px; font-size:13px; cursor:pointer;">🔑 Configure API Key Now</button></p>\n\n*(Or if you are running locally with \`npm start\`, set your backend URL to \`http://localhost:3000\` in Server Settings).*`,
+        model: state.model,
+        timestamp: Date.now(),
+        error: false,
+      };
+      const dialog = byId("clientKeysDialog");
+      if (dialog) setTimeout(() => dialog.showModal(), 300);
+      return;
+    }
+
+    state.messages[assistantIndex].content = "Generating direct response from browser AI API…";
+    renderMessages();
+
+    // 1. Google Gemini if key provided and either chosen or images attached
+    const hasImageAttachments = attachments && attachments.some((a) => a.type?.startsWith("image/") && a.data);
+    if ((geminiKey && (state.model.includes("gemini") || hasImageAttachments)) || (!nvidiaKey && geminiKey)) {
+      try {
+        const contents = [];
+        messages.slice(-8).forEach((m) => {
+          if (!m.pending && m.content) {
+            contents.push({
+              role: m.role === "assistant" ? "model" : "user",
+              parts: [{ text: m.content }],
+            });
+          }
+        });
+        const currentParts = [{ text: prompt || "Please analyze this request." }];
+        if (attachments && attachments.length > 0) {
+          attachments.forEach((att) => {
+            if (att.data && att.data.includes(";base64,")) {
+              const mime = att.data.split(";base64,")[0].replace("data:", "") || "image/png";
+              const b64 = att.data.split(";base64,")[1];
+              currentParts.push({
+                inlineData: { mimeType: mime, data: b64 },
+              });
+            }
+          });
+        }
+        contents.push({ role: "user", parts: currentParts });
+
+        const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ contents }),
+        });
+        const gText = await geminiRes.text();
+        let gData = null;
+        try { gData = JSON.parse(gText); } catch {}
+        if (!geminiRes.ok) {
+          throw new Error(gData?.error?.message || `Gemini API error ${geminiRes.status}`);
+        }
+        const reply = gData?.candidates?.[0]?.content?.parts?.[0]?.text || "No reply generated.";
+        state.messages[assistantIndex] = {
+          role: "assistant",
+          content: reply,
+          agent: { name: "Gemini Vision Agent", model: "gemini-2.5-flash", reason: "Direct Client Browser Mode" },
+          model: "gemini-2.5-flash",
+          provider: "Google Gemini (Client-Direct)",
+          steps: [{ tool: "client_browser_vision", status: "completed", description: "Direct multimodal browser execution" }],
+          timestamp: Date.now(),
+        };
+        return;
+      } catch (err) {
+        if (!nvidiaKey && !openaiKey) throw err;
+        console.warn("Gemini direct call failed, trying NVIDIA NIM:", err);
+      }
+    }
+
+    // 2. NVIDIA NIM or OpenAI / Groq
+    let endpoint = "https://integrate.api.nvidia.com/v1/chat/completions";
+    let token = nvidiaKey;
+    let model = "nvidia/nemotron-3-super-120b-a12b";
+
+    if (state.model && !state.model.includes("gemini")) {
+      model = state.model.replace(/^nvidia_nim\//, "");
+    }
+    if (!nvidiaKey && openaiKey) {
+      if (openaiKey.startsWith("gsk_")) {
+        endpoint = "https://api.groq.com/openai/v1/chat/completions";
+        model = "llama-3.3-70b-versatile";
+      } else {
+        endpoint = "https://api.openai.com/v1/chat/completions";
+        model = "gpt-4o-mini";
+      }
+      token = openaiKey;
+    }
+
+    const chatMsgs = [
+      {
+        role: "system",
+        content: "You are Free Claude Code, an expert autonomous AI software engineer and senior developer. Provide comprehensive, accurate, production-ready code and helpful explanations.",
+      },
+      ...messages.slice(-8).filter((m) => !m.pending && m.content).map((m) => ({
+        role: m.role === "assistant" ? "assistant" : "user",
+        content: m.content || "",
+      })),
+    ];
+    if (!chatMsgs.some((m) => m.content === prompt)) {
+      chatMsgs.push({ role: "user", content: prompt });
+    }
+
+    const nRes = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: chatMsgs,
+        temperature: 0.6,
+        max_tokens: 4096,
+      }),
+    });
+    const nText = await nRes.text();
+    let nData = null;
+    try { nData = JSON.parse(nText); } catch {}
+    if (!nRes.ok) {
+      throw new Error(nData?.error?.message || nData?.message || `API error ${nRes.status}: ${nText.slice(0, 100)}`);
+    }
+    const reply = nData?.choices?.[0]?.message?.content || "Completed response.";
+    state.messages[assistantIndex] = {
+      role: "assistant",
+      content: reply,
+      agent: { name: "NVIDIA Agent", model, reason: "Direct Client Browser Mode" },
+      model,
+      provider: "NVIDIA NIM (Client-Direct)",
+      steps: [{ tool: "client_browser_nim", status: "completed", description: "Direct browser AI execution" }],
+      timestamp: Date.now(),
+    };
+  }
+
   // ==========================================
   // Submit & Run Autonomous Agent
   // ==========================================
@@ -915,42 +1168,52 @@
     });
     renderMessages();
 
-    try {
-      const data = await api("/api/agent/run", {
-        method: "POST",
-        body: JSON.stringify({
-          prompt: text || "Please inspect the attached screenshot / file.",
-          repoPath: state.activeRepo.path,
-          agentMode: state.agentMode,
-          attachments: currentAttachments,
-          messages: state.messages.filter((m) => !m.pending).map((m) => ({ role: m.role, content: m.content })),
-        }),
-      });
+    const isStaticPages = window.location.hostname.endsWith("github.io") && !localStorage.getItem("fcc_backend_url");
+    if (isStaticPages) {
+      await executeDirectAI({ prompt: text || "Please inspect the attached screenshot / file.", messages: state.messages, attachments: currentAttachments, assistantIndex });
+    } else {
+      try {
+        const data = await api("/api/agent/run", {
+          method: "POST",
+          body: JSON.stringify({
+            prompt: text || "Please inspect the attached screenshot / file.",
+            repoPath: state.activeRepo.path,
+            agentMode: state.agentMode,
+            attachments: currentAttachments,
+            messages: state.messages.filter((m) => !m.pending).map((m) => ({ role: m.role, content: m.content })),
+          }),
+        });
 
-      state.messages[assistantIndex] = {
-        role: "assistant",
-        content: data.reply || "Completed execution steps.",
-        agent: data.agent,
-        model: data.agent?.model || state.model,
-        provider: "NVIDIA NIM",
-        steps: data.steps || [],
-        repoPath: data.repoPath || state.activeRepo.path,
-        gitStatus: data.gitStatus,
-        timestamp: Date.now(),
-      };
+        state.messages[assistantIndex] = {
+          role: "assistant",
+          content: data.reply || "Completed execution steps.",
+          agent: data.agent,
+          model: data.agent?.model || state.model,
+          provider: "NVIDIA NIM",
+          steps: data.steps || [],
+          repoPath: data.repoPath || state.activeRepo.path,
+          gitStatus: data.gitStatus,
+          timestamp: Date.now(),
+        };
 
-      if (data.gitStatus) {
-        state.activeRepo = data.gitStatus;
-        updateRepoBarUI();
+        if (data.gitStatus) {
+          state.activeRepo = data.gitStatus;
+          updateRepoBarUI();
+        }
+      } catch (err) {
+        if (err.status === 405 || err.status === 404 || err.message?.includes("405") || err.message?.includes("404")) {
+          console.warn("Backend API unavailable, falling back to direct browser AI:", err.message);
+          await executeDirectAI({ prompt: text || "Please inspect the attached screenshot / file.", messages: state.messages, attachments: currentAttachments, assistantIndex });
+        } else {
+          state.messages[assistantIndex] = {
+            role: "assistant",
+            content: `⚠️ Error executing agent loop: ${err.message}`,
+            model: state.model,
+            timestamp: Date.now(),
+            error: true,
+          };
+        }
       }
-    } catch (err) {
-      state.messages[assistantIndex] = {
-        role: "assistant",
-        content: `⚠️ Error executing agent loop: ${err.message}`,
-        model: state.model,
-        timestamp: Date.now(),
-        error: true,
-      };
     } finally {
       state.busy = false;
       saveMessages();
@@ -1247,6 +1510,7 @@
 
   window.FccChat = {
     initialize: initializeChat,
+    openKeysModal: openClientKeysModal,
   };
 
   // Self-boot if chatRoot is in the DOM

@@ -239,6 +239,58 @@
         <button id="saveProvider" class="primary-button" type="button" disabled>Save</button>
       </div>
     </dialog>
+    <dialog id="clientKeysDialog" class="integration-dialog" style="max-width: 580px; width: 92%;">
+      <div class="section-heading">
+        <h3 id="clientKeysTitle">🔑 API Keys & Server Config</h3>
+        <button id="closeClientKeysDialog" class="ghost-button" type="button" aria-label="Close">&#x2715;</button>
+      </div>
+      <p style="font-size: 13px; color: var(--muted, #94a3b8); margin: 0 0 16px 0; line-height: 1.5;">
+        Configure API keys to run models directly in your browser (Static GitHub Pages Mode), or point to your self-hosted backend. Keys are stored safely in your browser only.
+      </p>
+      <div style="display: flex; flex-direction: column; gap: 14px;">
+        <div class="field-item">
+          <label for="inputNvidiaKey" style="font-size: 13px; font-weight: 500; display: flex; justify-content: space-between; margin-bottom: 4px;">
+            <span>NVIDIA NIM API Key (Recommended)</span>
+            <a href="https://build.nvidia.com" target="_blank" rel="noopener noreferrer" style="color: #38bdf8; font-size: 11px;">Get Free Key ↗</a>
+          </label>
+          <input id="inputNvidiaKey" type="password" class="text-input" placeholder="nvapi-..." autocomplete="off" style="width: 100%; box-sizing: border-box; font-family: monospace; font-size: 13px; padding: 8px 10px; background: rgba(0,0,0,0.3); border: 1px solid var(--line, #334155); border-radius: 6px; color: #fff;" />
+          <span style="font-size: 11px; color: var(--muted, #94a3b8); margin-top: 2px; display: block;">Powers Nemotron 3 Super 120B, Llama 3.3 70B, DeepSeek R1 & Qwen 2.5 Coder.</span>
+        </div>
+
+        <div class="field-item">
+          <label for="inputGeminiKey" style="font-size: 13px; font-weight: 500; display: flex; justify-content: space-between; margin-bottom: 4px;">
+            <span>Google Gemini API Key</span>
+            <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" style="color: #38bdf8; font-size: 11px;">Get Free Key ↗</a>
+          </label>
+          <input id="inputGeminiKey" type="password" class="text-input" placeholder="AIzaSy..." autocomplete="off" style="width: 100%; box-sizing: border-box; font-family: monospace; font-size: 13px; padding: 8px 10px; background: rgba(0,0,0,0.3); border: 1px solid var(--line, #334155); border-radius: 6px; color: #fff;" />
+          <span style="font-size: 11px; color: var(--muted, #94a3b8); margin-top: 2px; display: block;">Powers Gemini 2.5 Flash with full screenshot / image multimodal vision.</span>
+        </div>
+
+        <div class="field-item">
+          <label for="inputOpenaiKey" style="font-size: 13px; font-weight: 500; display: flex; justify-content: space-between; margin-bottom: 4px;">
+            <span>Groq / OpenAI API Key (Optional)</span>
+            <a href="https://console.groq.com" target="_blank" rel="noopener noreferrer" style="color: #38bdf8; font-size: 11px;">Groq Console ↗</a>
+          </label>
+          <input id="inputOpenaiKey" type="password" class="text-input" placeholder="gsk_... or sk-..." autocomplete="off" style="width: 100%; box-sizing: border-box; font-family: monospace; font-size: 13px; padding: 8px 10px; background: rgba(0,0,0,0.3); border: 1px solid var(--line, #334155); border-radius: 6px; color: #fff;" />
+        </div>
+
+        <div class="field-item" style="border-top: 1px solid var(--line, #334155); padding-top: 12px;">
+          <label for="inputBackendUrl" style="font-size: 13px; font-weight: 500; margin-bottom: 4px; display: block;">
+            <span>Custom Backend Server URL (Optional)</span>
+          </label>
+          <input id="inputBackendUrl" type="url" class="text-input" placeholder="http://localhost:3000 (if self-hosted) or custom Cloud URL" style="width: 100%; box-sizing: border-box; font-size: 13px; padding: 8px 10px; background: rgba(0,0,0,0.3); border: 1px solid var(--line, #334155); border-radius: 6px; color: #fff;" />
+          <span style="font-size: 11px; color: var(--muted, #94a3b8); margin-top: 2px; display: block;">Leave blank for direct browser AI mode. Set to your local server for autonomous terminal bash tools.</span>
+        </div>
+      </div>
+
+      <div id="clientKeysStatus" class="message-area" style="margin-top: 12px; font-size: 12px; padding: 6px 10px; border-radius: 4px;" hidden></div>
+
+      <div class="provider-dialog-footer" style="margin-top: 16px; display: flex; justify-content: flex-end; align-items: center; gap: 8px;">
+        <button id="clearClientKeysBtn" class="ghost-button" type="button" style="margin-right: auto; font-size: 12px; color: #ef4444;">Clear Keys</button>
+        <button id="cancelClientKeysBtn" class="secondary-button" type="button">Cancel</button>
+        <button id="saveClientKeysBtn" class="primary-button" type="button">Save Settings</button>
+      </div>
+    </dialog>
     <script src="./form_controls.js"></script>
     <script src="./model_combobox.js"></script>
     <script src="./session_ui.js"></script>

@@ -23,19 +23,28 @@
   const byId = (id) => document.getElementById(id);
 
   async function api(endpoint, options = {}) {
-    const res = await fetch(endpoint, {
+    const backendUrl = (localStorage.getItem("fcc_backend_url") || "").trim();
+    let fullUrl = endpoint;
+    if (backendUrl && endpoint.startsWith("/api/")) {
+      fullUrl = backendUrl.replace(/\/+$/, "") + endpoint;
+    }
+    const res = await fetch(fullUrl, {
       headers: { "Content-Type": "application/json", ...(options.headers || {}) },
       ...options,
     });
+    const text = await res.text();
+    let data = null;
+    try {
+      data = JSON.parse(text);
+    } catch {}
     if (!res.ok) {
-      let msg = `HTTP ${res.status}`;
-      try {
-        const err = await res.json();
-        if (err.error) msg = err.error;
-      } catch {}
+      let msg = data?.error || data?.detail;
+      if (!msg) {
+        msg = res.status === 405 ? "Static hosting does not support file modification without a backend." : `HTTP ${res.status}`;
+      }
       throw new Error(msg);
     }
-    return res.json();
+    return data !== null ? data : { text };
   }
 
   // ==========================================

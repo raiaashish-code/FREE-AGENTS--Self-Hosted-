@@ -113,24 +113,36 @@ function sourceText(field) {
 }
 
 async function api(path, options = {}) {
-  const response = await fetch(path, {
+  const backendUrl = (localStorage.getItem("fcc_backend_url") || "").trim();
+  let fullUrl = path;
+  if (backendUrl && path.startsWith("/admin/")) {
+    fullUrl = backendUrl.replace(/\/+$/, "") + path;
+  }
+  const response = await fetch(fullUrl, {
     headers: { "Content-Type": "application/json", ...(options.headers || {}) },
     ...options,
     cache: "no-store",
   });
+  const text = await response.text();
+  let payload = null;
+  try {
+    payload = JSON.parse(text);
+  } catch {
+    // Non-JSON response (e.g. 404 or 405 HTML from static server)
+  }
   if (!response.ok) {
     let detail = "";
-    try {
-      const payload = await response.json();
-      detail = typeof payload.detail === "string" ? payload.detail : "";
-    } catch {
-      // The status remains useful when an upstream proxy returns a non-JSON page.
+    if (payload && typeof payload.detail === "string") {
+      detail = payload.detail;
+    } else if (payload && typeof payload.error === "string") {
+      detail = payload.error;
     }
     const error = new Error(detail || `${response.status} ${response.statusText}`);
     error.status = response.status;
+    error.payload = payload;
     throw error;
   }
-  return response.json();
+  return payload !== null ? payload : { text };
 }
 
 function startupButton(button, loading) {
