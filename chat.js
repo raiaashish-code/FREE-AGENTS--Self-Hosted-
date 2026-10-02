@@ -965,20 +965,59 @@
     keysDialog.showModal();
   }
 
+  function getClientKeys() {
+    let geminiKey = (
+      localStorage.getItem("fcc_gemini_key") ||
+      localStorage.getItem("GEMINI_API_KEY") ||
+      ""
+    ).trim();
+    let nvidiaKey = (
+      localStorage.getItem("fcc_nvidia_key") ||
+      localStorage.getItem("NVIDIA_NIM_API_KEY") ||
+      ""
+    ).trim();
+    let openaiKey = (
+      localStorage.getItem("fcc_openai_key") ||
+      localStorage.getItem("OPENAI_API_KEY") ||
+      localStorage.getItem("GROQ_API_KEY") ||
+      localStorage.getItem("OPENROUTER_API_KEY") ||
+      ""
+    ).trim();
+    const backendUrl = (localStorage.getItem("fcc_backend_url") || "").trim();
+
+    try {
+      const savedConfig = JSON.parse(localStorage.getItem("fcc_static_config") || "{}");
+      if (!geminiKey && savedConfig.GEMINI_API_KEY) geminiKey = savedConfig.GEMINI_API_KEY.trim();
+      if (!nvidiaKey && savedConfig.NVIDIA_NIM_API_KEY) nvidiaKey = savedConfig.NVIDIA_NIM_API_KEY.trim();
+      if (!openaiKey && savedConfig.OPENAI_API_KEY) openaiKey = savedConfig.OPENAI_API_KEY.trim();
+      if (!openaiKey && savedConfig.GROQ_API_KEY) openaiKey = savedConfig.GROQ_API_KEY.trim();
+      if (!openaiKey && savedConfig.OPENROUTER_API_KEY) openaiKey = savedConfig.OPENROUTER_API_KEY.trim();
+    } catch {}
+
+    // Auto-detect by prefix if pasted into a different box
+    [geminiKey, nvidiaKey, openaiKey].forEach((k) => {
+      if (!k) return;
+      if (k.startsWith("AIzaSy") && !geminiKey) geminiKey = k;
+      if (k.startsWith("nvapi-") && !nvidiaKey) nvidiaKey = k;
+      if ((k.startsWith("gsk_") || k.startsWith("sk-or-") || k.startsWith("sk-")) && !openaiKey) openaiKey = k;
+    });
+
+    return { geminiKey, nvidiaKey, openaiKey, backendUrl };
+  }
+
   function updateApiKeysBtnUI() {
     const dot = byId("apiKeysDot");
     const label = byId("apiKeysBtnLabel");
-    const nvidiaKey = (localStorage.getItem("fcc_nvidia_key") || "").trim();
-    const geminiKey = (localStorage.getItem("fcc_gemini_key") || "").trim();
-    const openaiKey = (localStorage.getItem("fcc_openai_key") || "").trim();
-    const backendUrl = (localStorage.getItem("fcc_backend_url") || "").trim();
+    const { geminiKey, nvidiaKey, openaiKey, backendUrl } = getClientKeys();
     const hasKey = Boolean(nvidiaKey || geminiKey || openaiKey || backendUrl);
     if (dot) dot.textContent = hasKey ? "🟢" : "🔑";
     if (label) {
       if (backendUrl) label.textContent = "Server: Connected";
-      else if (nvidiaKey) label.textContent = "NVIDIA NIM Active";
       else if (geminiKey) label.textContent = "Gemini Active";
+      else if (openaiKey && openaiKey.startsWith("gsk_")) label.textContent = "Groq Active";
+      else if (openaiKey && openaiKey.startsWith("sk-or-")) label.textContent = "OpenRouter Active";
       else if (openaiKey) label.textContent = "OpenAI Active";
+      else if (nvidiaKey) label.textContent = "NVIDIA NIM Active";
       else label.textContent = "API Keys & Server";
     }
   }
@@ -987,14 +1026,12 @@
   // Direct Client-Side Browser AI (Zero-Server / GitHub Pages Mode)
   // ==========================================
   async function executeDirectAI({ prompt, messages, attachments, assistantIndex }) {
-    const nvidiaKey = (localStorage.getItem("fcc_nvidia_key") || "").trim();
-    const geminiKey = (localStorage.getItem("fcc_gemini_key") || "").trim();
-    const openaiKey = (localStorage.getItem("fcc_openai_key") || "").trim();
+    const { geminiKey, nvidiaKey, openaiKey, backendUrl } = getClientKeys();
 
-    if (!nvidiaKey && !geminiKey && !openaiKey) {
+    if (!nvidiaKey && !geminiKey && !openaiKey && !backendUrl) {
       state.messages[assistantIndex] = {
         role: "assistant",
-        content: `👋 **Welcome to Free Claude Code (Static GitHub Pages Mode)**\n\nGitHub Pages is a static host without a Node.js backend. You can run AI models **directly inside your browser** with your own free API key:\n\n• **NVIDIA NIM** (Recommended — free tier provides Nemotron 3 120B, Llama 3.3 70B, DeepSeek R1):\n  👉 [Get Free NVIDIA Key](https://build.nvidia.com)\n• **Google Gemini** (Gemini 2.5 Flash with full screenshot / multimodal vision):\n  👉 [Get Free Gemini Key](https://aistudio.google.com/apikey)\n\n<p style="margin-top:12px;"><button type="button" class="primary-button" data-action="open-keys" style="padding:6px 16px; font-size:13px; cursor:pointer;">🔑 Configure API Key Now</button></p>\n\n*(Or if you are running locally with \`npm start\`, set your backend URL to \`http://localhost:3000\` in Server Settings).*`,
+        content: `👋 **Welcome to Free Claude Code (Static GitHub Pages Mode)**\n\nTo run AI models **directly inside your browser** on GitHub Pages without a backend, please provide a free API key:\n\n• **Google Gemini** (100% Free & Zero CORS restrictions — includes multimodal image/screenshot vision):\n  👉 [Get Free Gemini Key](https://aistudio.google.com/apikey)\n• **Groq / OpenRouter** (100% Free & Zero CORS restrictions — fast Llama 3.3 70B & DeepSeek R1):\n  👉 [Get Free Groq Key](https://console.groq.com/keys) · [OpenRouter](https://openrouter.ai/keys)\n• **NVIDIA NIM** (For local / self-hosted backend server at \`http://localhost:3000\`):\n  👉 [Get Free NVIDIA Key](https://build.nvidia.com)\n\n<p style="margin-top:12px;"><button type="button" class="primary-button" data-action="open-keys" style="padding:6px 16px; font-size:13px; cursor:pointer;">🔑 Configure API Key Now</button></p>`,
         model: state.model,
         timestamp: Date.now(),
         error: false,
@@ -1007,9 +1044,8 @@
     state.messages[assistantIndex].content = "Generating direct response from browser AI API…";
     renderMessages();
 
-    // 1. Google Gemini if key provided and either chosen or images attached
-    const hasImageAttachments = attachments && attachments.some((a) => a.type?.startsWith("image/") && a.data);
-    if ((geminiKey && (state.model.includes("gemini") || hasImageAttachments)) || (!nvidiaKey && geminiKey)) {
+    // 1. Google Gemini (Native browser CORS support, zero backend needed)
+    if (geminiKey) {
       try {
         const contents = [];
         messages.slice(-8).forEach((m) => {
@@ -1034,96 +1070,177 @@
         }
         contents.push({ role: "user", parts: currentParts });
 
-        const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ contents }),
-        });
-        const gText = await geminiRes.text();
+        // Try gemini-2.0-flash first, then gemini-1.5-flash
         let gData = null;
-        try { gData = JSON.parse(gText); } catch {}
-        if (!geminiRes.ok) {
-          throw new Error(gData?.error?.message || `Gemini API error ${geminiRes.status}`);
+        for (const gemModel of ["gemini-2.0-flash", "gemini-1.5-flash"]) {
+          try {
+            const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${gemModel}:generateContent?key=${geminiKey}`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ contents }),
+            });
+            const gText = await geminiRes.text();
+            try { gData = JSON.parse(gText); } catch {}
+            if (geminiRes.ok && gData?.candidates?.[0]?.content?.parts?.[0]?.text) {
+              const reply = gData.candidates[0].content.parts[0].text;
+              state.messages[assistantIndex] = {
+                role: "assistant",
+                content: reply,
+                agent: { name: "Gemini Vision Agent", model: gemModel, reason: "Direct Client Browser Mode" },
+                model: gemModel,
+                provider: "Google Gemini (Client-Direct)",
+                steps: [{ tool: "client_browser_vision", status: "completed", description: "Direct multimodal browser execution" }],
+                timestamp: Date.now(),
+              };
+              return;
+            }
+          } catch (e) {
+            console.warn(`Gemini model ${gemModel} failed:`, e);
+          }
         }
-        const reply = gData?.candidates?.[0]?.content?.parts?.[0]?.text || "No reply generated.";
+        if (gData?.error?.message) {
+          throw new Error(gData.error.message);
+        }
+      } catch (err) {
+        if (!nvidiaKey && !openaiKey) throw err;
+        console.warn("Gemini call failed, trying next provider:", err);
+      }
+    }
+
+    // 2. Groq / OpenRouter / OpenAI (Native browser CORS support)
+    if (openaiKey) {
+      try {
+        let endpoint = "https://api.openai.com/v1/chat/completions";
+        let model = "gpt-4o-mini";
+        let providerName = "OpenAI";
+
+        if (openaiKey.startsWith("gsk_")) {
+          endpoint = "https://api.groq.com/openai/v1/chat/completions";
+          model = "llama-3.3-70b-versatile";
+          providerName = "Groq";
+        } else if (openaiKey.startsWith("sk-or-")) {
+          endpoint = "https://openrouter.ai/api/v1/chat/completions";
+          model = "meta-llama/llama-3.3-70b-instruct";
+          providerName = "OpenRouter";
+        }
+
+        const chatMsgs = [
+          {
+            role: "system",
+            content: "You are Free Claude Code, an expert autonomous AI software engineer and senior developer. Provide comprehensive, accurate, production-ready code and helpful explanations.",
+          },
+          ...messages.slice(-8).filter((m) => !m.pending && m.content).map((m) => ({
+            role: m.role === "assistant" ? "assistant" : "user",
+            content: m.content || "",
+          })),
+        ];
+        if (!chatMsgs.some((m) => m.content === prompt)) {
+          chatMsgs.push({ role: "user", content: prompt });
+        }
+
+        const res = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${openaiKey}`,
+          },
+          body: JSON.stringify({
+            model,
+            messages: chatMsgs,
+            temperature: 0.6,
+            max_tokens: 4096,
+          }),
+        });
+        const resText = await res.text();
+        let resData = null;
+        try { resData = JSON.parse(resText); } catch {}
+        if (!res.ok) {
+          throw new Error(resData?.error?.message || resData?.message || `API error ${res.status}: ${resText.slice(0, 100)}`);
+        }
+        const reply = resData?.choices?.[0]?.message?.content || "Completed response.";
         state.messages[assistantIndex] = {
           role: "assistant",
           content: reply,
-          agent: { name: "Gemini Vision Agent", model: "gemini-2.5-flash", reason: "Direct Client Browser Mode" },
-          model: "gemini-2.5-flash",
-          provider: "Google Gemini (Client-Direct)",
-          steps: [{ tool: "client_browser_vision", status: "completed", description: "Direct multimodal browser execution" }],
+          agent: { name: `${providerName} Agent`, model, reason: "Direct Client Browser Mode" },
+          model,
+          provider: `${providerName} (Client-Direct)`,
+          steps: [{ tool: "client_browser_ai", status: "completed", description: "Direct browser AI execution" }],
           timestamp: Date.now(),
         };
         return;
       } catch (err) {
-        if (!nvidiaKey && !openaiKey) throw err;
-        console.warn("Gemini direct call failed, trying NVIDIA NIM:", err);
+        if (!nvidiaKey) throw err;
+        console.warn("OpenAI/Groq call failed, trying NVIDIA NIM:", err);
       }
     }
 
-    // 2. NVIDIA NIM or OpenAI / Groq
-    let endpoint = "https://integrate.api.nvidia.com/v1/chat/completions";
-    let token = nvidiaKey;
-    let model = "nvidia/nemotron-3-super-120b-a12b";
+    // 3. NVIDIA NIM
+    if (nvidiaKey) {
+      let endpoint = "https://integrate.api.nvidia.com/v1/chat/completions";
+      let model = "nvidia/nemotron-3-super-120b-a12b";
 
-    if (state.model && !state.model.includes("gemini")) {
-      model = state.model.replace(/^nvidia_nim\//, "");
-    }
-    if (!nvidiaKey && openaiKey) {
-      if (openaiKey.startsWith("gsk_")) {
-        endpoint = "https://api.groq.com/openai/v1/chat/completions";
-        model = "llama-3.3-70b-versatile";
-      } else {
-        endpoint = "https://api.openai.com/v1/chat/completions";
-        model = "gpt-4o-mini";
+      if (state.model && !state.model.includes("gemini")) {
+        model = state.model.replace(/^nvidia_nim\//, "");
       }
-      token = openaiKey;
-    }
 
-    const chatMsgs = [
-      {
-        role: "system",
-        content: "You are Free Claude Code, an expert autonomous AI software engineer and senior developer. Provide comprehensive, accurate, production-ready code and helpful explanations.",
-      },
-      ...messages.slice(-8).filter((m) => !m.pending && m.content).map((m) => ({
-        role: m.role === "assistant" ? "assistant" : "user",
-        content: m.content || "",
-      })),
-    ];
-    if (!chatMsgs.some((m) => m.content === prompt)) {
-      chatMsgs.push({ role: "user", content: prompt });
-    }
+      const chatMsgs = [
+        {
+          role: "system",
+          content: "You are Free Claude Code, an expert autonomous AI software engineer and senior developer. Provide comprehensive, accurate, production-ready code and helpful explanations.",
+        },
+        ...messages.slice(-8).filter((m) => !m.pending && m.content).map((m) => ({
+          role: m.role === "assistant" ? "assistant" : "user",
+          content: m.content || "",
+        })),
+      ];
+      if (!chatMsgs.some((m) => m.content === prompt)) {
+        chatMsgs.push({ role: "user", content: prompt });
+      }
 
-    const nRes = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        model,
-        messages: chatMsgs,
-        temperature: 0.6,
-        max_tokens: 4096,
-      }),
-    });
-    const nText = await nRes.text();
-    let nData = null;
-    try { nData = JSON.parse(nText); } catch {}
-    if (!nRes.ok) {
-      throw new Error(nData?.error?.message || nData?.message || `API error ${nRes.status}: ${nText.slice(0, 100)}`);
+      try {
+        const nRes = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${nvidiaKey}`,
+          },
+          body: JSON.stringify({
+            model,
+            messages: chatMsgs,
+            temperature: 0.6,
+            max_tokens: 4096,
+          }),
+        });
+        const nText = await nRes.text();
+        let nData = null;
+        try { nData = JSON.parse(nText); } catch {}
+        if (!nRes.ok) {
+          throw new Error(nData?.error?.message || nData?.message || `API error ${nRes.status}: ${nText.slice(0, 100)}`);
+        }
+        const reply = nData?.choices?.[0]?.message?.content || "Completed response.";
+        state.messages[assistantIndex] = {
+          role: "assistant",
+          content: reply,
+          agent: { name: "NVIDIA Agent", model, reason: "Direct Client Browser Mode" },
+          model,
+          provider: "NVIDIA NIM (Client-Direct)",
+          steps: [{ tool: "client_browser_nim", status: "completed", description: "Direct browser AI execution" }],
+          timestamp: Date.now(),
+        };
+      } catch (err) {
+        if (err.name === "TypeError" || err.message?.includes("Failed to fetch") || err.message?.includes("NetworkError")) {
+          state.messages[assistantIndex] = {
+            role: "assistant",
+            content: `⚠️ **Browser Direct CORS Restriction on NVIDIA NIM**\n\nYour NVIDIA API key is saved, but NVIDIA's API servers (\`integrate.api.nvidia.com\`) block direct browser-to-API requests from static web pages via CORS.\n\n### 💡 Quick & 100% Free Fixes:\n1. **Use Google Gemini API Key** (Recommended — 100% Free, zero CORS limits, full image vision): 👉 [Get Free Gemini Key](https://aistudio.google.com/apikey)\n2. **Use Groq API Key** (100% Free, ultra-fast Llama 3.3 70B & DeepSeek R1, zero CORS limits): 👉 [Get Free Groq Key](https://console.groq.com/keys)\n3. **Use Self-Hosted Server**: Run \`npm start\` locally or in Docker, and set Server URL to \`http://localhost:3000\` in **API Keys & Server**.\n\n<p style="margin-top:12px;"><button type="button" class="primary-button" data-action="open-keys" style="padding:6px 16px; font-size:13px; cursor:pointer;">🔑 Configure Gemini or Groq Key Now</button></p>`,
+            model: state.model,
+            timestamp: Date.now(),
+            error: true,
+          };
+          return;
+        }
+        throw err;
+      }
     }
-    const reply = nData?.choices?.[0]?.message?.content || "Completed response.";
-    state.messages[assistantIndex] = {
-      role: "assistant",
-      content: reply,
-      agent: { name: "NVIDIA Agent", model, reason: "Direct Client Browser Mode" },
-      model,
-      provider: "NVIDIA NIM (Client-Direct)",
-      steps: [{ tool: "client_browser_nim", status: "completed", description: "Direct browser AI execution" }],
-      timestamp: Date.now(),
-    };
   }
 
   // ==========================================
@@ -1171,7 +1288,17 @@
     try {
       const isStaticPages = window.location.hostname.endsWith("github.io") && !localStorage.getItem("fcc_backend_url");
       if (isStaticPages) {
-        await executeDirectAI({ prompt: text || "Please inspect the attached screenshot / file.", messages: state.messages, attachments: currentAttachments, assistantIndex });
+        try {
+          await executeDirectAI({ prompt: text || "Please inspect the attached screenshot / file.", messages: state.messages, attachments: currentAttachments, assistantIndex });
+        } catch (err) {
+          state.messages[assistantIndex] = {
+            role: "assistant",
+            content: `⚠️ **AI Execution Error:** ${err.message}\n\n*Click **API Keys & Server** at the top right to verify your Google Gemini or Groq API key.*`,
+            model: state.model,
+            timestamp: Date.now(),
+            error: true,
+          };
+        }
       } else {
         try {
           const data = await api("/api/agent/run", {

@@ -246,23 +246,70 @@ async function load({ providersOnly = false } = {}) {
   state.startupRequest = null;
   showMessage("Loading admin config");
 
-  let config;
-  try {
-    config = await api("/admin/api/config");
-  } catch (err) {
-    console.warn("Could not connect to backend server. Running in static preview mode.", err);
+  let config = null;
+  const isStaticPages = window.location.hostname.endsWith("github.io") && !localStorage.getItem("fcc_backend_url");
+  
+  if (!isStaticPages) {
+    try {
+      config = await api("/admin/api/config");
+    } catch (err) {
+      console.warn("Could not connect to backend server. Checking static config...", err);
+    }
+  }
+
+  if (!config || !config.sections || !config.sections.length) {
+    try {
+      const res = await fetch("./admin_config.json");
+      if (res.ok) {
+        config = await res.json();
+      }
+    } catch (err) {
+      console.warn("Could not fetch ./admin_config.json:", err);
+    }
+  }
+
+  if (!config) {
     config = {
       paths: { managed: "GitHub Pages (Static Preview Mode)" },
       custom_providers: [],
       provider_status: [
-        { id: "nvidia_nim", name: "NVIDIA NIM", status: "not_configured", settings_keys: ["NVIDIA_NIM_API_KEY"], missing_configuration_keys: ["NVIDIA_NIM_API_KEY"] },
-        { id: "gemini", name: "Google Gemini", status: "not_configured", settings_keys: ["GEMINI_API_KEY"], missing_configuration_keys: ["GEMINI_API_KEY"] },
+        { provider_id: "gemini", display_name: "Google Gemini", status: "configured", settings_keys: ["GEMINI_API_KEY"], missing_configuration_keys: [] },
+        { provider_id: "nvidia_nim", display_name: "NVIDIA NIM", status: "configured", settings_keys: ["NVIDIA_NIM_API_KEY"], missing_configuration_keys: [] },
       ],
       fields: [
-        { key: "MODEL", value: "nvidia_nim/nvidia/nemotron-3-super-120b-a12b", options: ["nvidia_nim/nvidia/nemotron-3-super-120b-a12b", "gemini-3.5-flash"] },
+        { key: "MODEL", value: "gemini-2.0-flash", options: ["gemini-2.0-flash", "nvidia_nim/nvidia/nemotron-3-super-120b-a12b"], section: "models" },
       ],
-      sections: [],
+      sections: [
+        { id: "models", label: "Model Routing", description: "Search discovered provider models or enter a provider/model slug." },
+        { id: "reasoning", label: "Reasoning", description: "Client reasoning policy and route-specific overrides." },
+        { id: "web_tools", label: "Web Tools", description: "Local Anthropic web_search and web_fetch behavior." },
+        { id: "runtime", label: "Runtime", description: "Server API token, rate limits, timeouts, and process settings." },
+        { id: "messaging", label: "Messaging", description: "Discord, Telegram, CLI workspace, and session settings." },
+        { id: "voice", label: "Voice", description: "Voice note transcription settings." },
+      ],
     };
+  }
+
+  // Overlay saved local settings from browser storage in static mode
+  try {
+    const localOverrides = JSON.parse(localStorage.getItem("fcc_static_config") || "{}");
+    if (config.fields && Object.keys(localOverrides).length) {
+      config.fields.forEach((field) => {
+        if (localOverrides[field.key] !== undefined) {
+          field.value = localOverrides[field.key];
+          field.configured = true;
+        }
+      });
+    }
+    // Also reflect keys from fcc_gemini_key etc.
+    const savedGem = localStorage.getItem("fcc_gemini_key");
+    const savedNv = localStorage.getItem("fcc_nvidia_key");
+    config.fields.forEach((f) => {
+      if (f.key === "GEMINI_API_KEY" && savedGem) { f.value = savedGem; f.configured = true; }
+      if (f.key === "NVIDIA_NIM_API_KEY" && savedNv) { f.value = savedNv; f.configured = true; }
+    });
+  } catch (err) {
+    console.warn("Could not apply local overrides:", err);
   }
 
   config.custom_providers ||= [];
@@ -1536,6 +1583,27 @@ async function apply(providerId = null, customAction = null) {
       : "Applied";
     showMessage([message, ...warnings].join("\n"), warnings.length ? "warn" : "ok");
   } catch (error) {
+    const isStatic = window.location.hostname.endsWith("github.io") || !localStorage.getItem("fcc_backend_url");
+    if (isStatic) {
+      try {
+        const current = JSON.parse(localStorage.getItem("fcc_static_config") || "{}");
+        Object.assign(current, values);
+        localStorage.setItem("fcc_static_config", JSON.stringify(current));
+
+        if (values.GEMINI_API_KEY) localStorage.setItem("fcc_gemini_key", values.GEMINI_API_KEY);
+        if (values.NVIDIA_NIM_API_KEY) localStorage.setItem("fcc_nvidia_key", values.NVIDIA_NIM_API_KEY);
+        if (values.OPENAI_API_KEY) localStorage.setItem("fcc_openai_key", values.OPENAI_API_KEY);
+        if (values.GROQ_API_KEY) localStorage.setItem("fcc_openai_key", values.GROQ_API_KEY);
+
+        if (providerId) byId("providerDialog")?.close();
+        await load({ providersOnly: !!providerId });
+        showMessage("✓ Settings saved locally (Browser Storage)", "ok");
+        return;
+      } catch (e) {
+        showMessage(`Could not save locally: ${e.message}`, "error");
+        return;
+      }
+    }
     showMessage(applied ? `Applied, but could not reload settings: ${error.message}` : `Could not apply settings: ${error.message}`, "error");
   } finally {
     setApplying(false);
