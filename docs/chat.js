@@ -1168,50 +1168,52 @@
     });
     renderMessages();
 
-    const isStaticPages = window.location.hostname.endsWith("github.io") && !localStorage.getItem("fcc_backend_url");
-    if (isStaticPages) {
-      await executeDirectAI({ prompt: text || "Please inspect the attached screenshot / file.", messages: state.messages, attachments: currentAttachments, assistantIndex });
-    } else {
-      try {
-        const data = await api("/api/agent/run", {
-          method: "POST",
-          body: JSON.stringify({
-            prompt: text || "Please inspect the attached screenshot / file.",
-            repoPath: state.activeRepo.path,
-            agentMode: state.agentMode,
-            attachments: currentAttachments,
-            messages: state.messages.filter((m) => !m.pending).map((m) => ({ role: m.role, content: m.content })),
-          }),
-        });
+    try {
+      const isStaticPages = window.location.hostname.endsWith("github.io") && !localStorage.getItem("fcc_backend_url");
+      if (isStaticPages) {
+        await executeDirectAI({ prompt: text || "Please inspect the attached screenshot / file.", messages: state.messages, attachments: currentAttachments, assistantIndex });
+      } else {
+        try {
+          const data = await api("/api/agent/run", {
+            method: "POST",
+            body: JSON.stringify({
+              prompt: text || "Please inspect the attached screenshot / file.",
+              repoPath: state.activeRepo.path,
+              agentMode: state.agentMode,
+              attachments: currentAttachments,
+              messages: state.messages.filter((m) => !m.pending).map((m) => ({ role: m.role, content: m.content })),
+            }),
+          });
 
-        state.messages[assistantIndex] = {
-          role: "assistant",
-          content: data.reply || "Completed execution steps.",
-          agent: data.agent,
-          model: data.agent?.model || state.model,
-          provider: "NVIDIA NIM",
-          steps: data.steps || [],
-          repoPath: data.repoPath || state.activeRepo.path,
-          gitStatus: data.gitStatus,
-          timestamp: Date.now(),
-        };
-
-        if (data.gitStatus) {
-          state.activeRepo = data.gitStatus;
-          updateRepoBarUI();
-        }
-      } catch (err) {
-        if (err.status === 405 || err.status === 404 || err.message?.includes("405") || err.message?.includes("404")) {
-          console.warn("Backend API unavailable, falling back to direct browser AI:", err.message);
-          await executeDirectAI({ prompt: text || "Please inspect the attached screenshot / file.", messages: state.messages, attachments: currentAttachments, assistantIndex });
-        } else {
           state.messages[assistantIndex] = {
             role: "assistant",
-            content: `⚠️ Error executing agent loop: ${err.message}`,
-            model: state.model,
+            content: data.reply || "Completed execution steps.",
+            agent: data.agent,
+            model: data.agent?.model || state.model,
+            provider: "NVIDIA NIM",
+            steps: data.steps || [],
+            repoPath: data.repoPath || state.activeRepo.path,
+            gitStatus: data.gitStatus,
             timestamp: Date.now(),
-            error: true,
           };
+
+          if (data.gitStatus) {
+            state.activeRepo = data.gitStatus;
+            updateRepoBarUI();
+          }
+        } catch (err) {
+          if (err.status === 405 || err.status === 404 || err.message?.includes("405") || err.message?.includes("404")) {
+            console.warn("Backend API unavailable, falling back to direct browser AI:", err.message);
+            await executeDirectAI({ prompt: text || "Please inspect the attached screenshot / file.", messages: state.messages, attachments: currentAttachments, assistantIndex });
+          } else {
+            state.messages[assistantIndex] = {
+              role: "assistant",
+              content: `⚠️ Error executing agent loop: ${err.message}`,
+              model: state.model,
+              timestamp: Date.now(),
+              error: true,
+            };
+          }
         }
       }
     } finally {
