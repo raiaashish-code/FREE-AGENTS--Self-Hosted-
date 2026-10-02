@@ -738,25 +738,9 @@
     });
 
     // Client API Keys & Server Config Modal Events
-    const keysDialog = byId("clientKeysDialog");
-    function openClientKeysModal() {
-      if (!keysDialog) return;
-      const nvInput = byId("inputNvidiaKey");
-      const gemInput = byId("inputGeminiKey");
-      const oaiInput = byId("inputOpenaiKey");
-      const urlInput = byId("inputBackendUrl");
-      const status = byId("clientKeysStatus");
-      if (nvInput) nvInput.value = localStorage.getItem("fcc_nvidia_key") || "";
-      if (gemInput) gemInput.value = localStorage.getItem("fcc_gemini_key") || "";
-      if (oaiInput) oaiInput.value = localStorage.getItem("fcc_openai_key") || "";
-      if (urlInput) urlInput.value = localStorage.getItem("fcc_backend_url") || "";
-      if (status) status.hidden = true;
-      keysDialog.showModal();
-    }
-
     byId("openApiKeysBtn")?.addEventListener("click", openClientKeysModal);
-    byId("closeClientKeysDialog")?.addEventListener("click", () => keysDialog?.close());
-    byId("cancelClientKeysBtn")?.addEventListener("click", () => keysDialog?.close());
+    byId("closeClientKeysDialog")?.addEventListener("click", () => byId("clientKeysDialog")?.close());
+    byId("cancelClientKeysBtn")?.addEventListener("click", () => byId("clientKeysDialog")?.close());
     byId("clearClientKeysBtn")?.addEventListener("click", () => {
       localStorage.removeItem("fcc_nvidia_key");
       localStorage.removeItem("fcc_gemini_key");
@@ -791,7 +775,7 @@
         status.textContent = "✓ Settings saved successfully!";
       }
       updateApiKeysBtnUI();
-      setTimeout(() => keysDialog?.close(), 500);
+      setTimeout(() => byId("clientKeysDialog")?.close(), 500);
     });
 
     // Listen for clicks on links in messages requesting API key setup
@@ -963,6 +947,22 @@
 
       list.appendChild(row);
     });
+  }
+
+  function openClientKeysModal() {
+    const keysDialog = byId("clientKeysDialog");
+    if (!keysDialog) return;
+    const nvInput = byId("inputNvidiaKey");
+    const gemInput = byId("inputGeminiKey");
+    const oaiInput = byId("inputOpenaiKey");
+    const urlInput = byId("inputBackendUrl");
+    const status = byId("clientKeysStatus");
+    if (nvInput) nvInput.value = localStorage.getItem("fcc_nvidia_key") || "";
+    if (gemInput) gemInput.value = localStorage.getItem("fcc_gemini_key") || "";
+    if (oaiInput) oaiInput.value = localStorage.getItem("fcc_openai_key") || "";
+    if (urlInput) urlInput.value = localStorage.getItem("fcc_backend_url") || "";
+    if (status) status.hidden = true;
+    keysDialog.showModal();
   }
 
   function updateApiKeysBtnUI() {
